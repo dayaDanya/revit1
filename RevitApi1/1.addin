@@ -1,0 +1,11 @@
+<RevitAddIns>
+<AddIn Type="Command">
+<Name>Class1</Name>
+<Assembly>RevitApi1.dll</Assembly>
+<AddInId>CD760254-A75C-48B1-9B14-786815D7F9F4</AddInId>
+<FullClassName>RevitApi1.Class1</FullClassName>
+<Text>Искать подложки</Text>
+<VendorId>MyId</VendorId>
+<VendorDescription></VendorDescription>
+</AddIn>
+</RevitAddIns>
