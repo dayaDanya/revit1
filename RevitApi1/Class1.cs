@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Reflection.Emit;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -35,44 +36,6 @@ namespace RevitApi1
             uidoc = commandData.Application.ActiveUIDocument;
             doc = uidoc.Document;
 
-            //try
-            //{
-            //    string name = "";
-            //    using (Transaction tx = new Transaction(doc))
-            //    {
-            //        tx.Start("DWG exporting");
-            //        ICollection<ElementId> selectedids = uidoc.Selection.GetElementIds();
-            //        foreach (ElementId e in selectedids)
-            //        {
-            //            ElementId e = new ElementId(356);
-            //            TaskDialog.Show("id", $"{e.IntegerValue}");
-            //            setting up the dwg export options
-            //            DWGExportOptions options = new DWGExportOptions();
-            //            ExportDWGSettings dWGSettings = ExportDWGSettings.Create(doc, "VA export");
-            //            options = dWGSettings.GetDWGExportOptions();
-            //            options.Colors = ExportColorMode.TrueColorPerView;
-            //            options.FileVersion = ACADVersion.R2010;
-            //            options.MergedViews = true;
-            //            Element f = doc.GetElement(e);
-            //            ElementType ftype = doc.GetElement(f.GetTypeId()) as ElementType;
-            //            List<ElementId> icollection = new List<ElementId>();
-            //            icollection.Add(e);
-            //            name = ftype.FamilyName + " " + f.Name;
-
-            //            doc.Export(folderPath, name, icollection, options);
-            //            ElementId dwgsettingid = dWGSettings.Id;
-            //            doc.Delete(dwgsettingid);
-            //        }
-            //        tx.Commit();
-            //    }
-            //    TaskDialog.Show("Good result", $"Exported {name}");
-            //    return Result.Succeeded;
-            //}
-            //catch (Exception e)
-            //{
-            //    TaskDialog.Show("Error", "Something went wrong, please contact your BIM manager");
-            //    return Result.Failed;
-            //}
 
             FilteredElementCollector collector = new FilteredElementCollector(doc);
             collector.OfClass(typeof(ImportInstance));
@@ -81,6 +44,20 @@ namespace RevitApi1
             var instanceTable = ExtractNumberFromTitle(importInstances, pattern);
 
             int savedElemsCount = SaveInstances(instanceTable);
+
+            Transaction t = new Transaction(doc);
+            t.Start("yo");
+           // ElementLevelFilter levelFilter = new ElementLevelFilter(level.Id);
+
+            FilteredElementCollector collector1 = new FilteredElementCollector(doc);
+            List<ElementId> allElementsOnLevel = collector
+               // .WherePasses(levelFilter)
+                .Where(element => element.IsHidden(doc.ActiveView))
+                .Cast<Element>()
+                .Select(element => element.Id)
+                .ToList();
+            doc.ActiveView.UnhideElements(allElementsOnLevel);
+            t.Commit();
             if (savedElemsCount != 0)
             {
                 TaskDialog.Show("Выгрузка DWG подложек",
@@ -127,54 +104,68 @@ namespace RevitApi1
                             FileVersion = ACADVersion.R2010,
                             MergedViews = true
                         };
-                        //изолируем двгшку
-                        //ICollection<ElementId> toBeIsolated = new HashSet<ElementId> {
-                        //    curElem.Value.Id
-                        //};
-                        //doc.ActiveView.IsolateElementsTemporary(toBeIsolated);
-
+                        
 
                         //добавляем viewplan(план этажа) с двгшкой в список
                         List<ElementId> elementsToExport = new List<ElementId>();
                         Level level = doc.GetElement(curElem.Value.LevelId) as Level;
                         ElementId viewPlanId = level.FindAssociatedPlanViewId();
+                       
                         elementsToExport.Add(viewPlanId);
 
-                        //collector.OfClass(typeof(ImportInstance));
-                        //List<ImportInstance> importInstances = collector.Cast<ImportInstance>().ToList();
-
-                        ElementLevelFilter level1Filter = new ElementLevelFilter(level.Id);
+                        ElementLevelFilter levelFilter = new ElementLevelFilter(level.Id);
+                        
                         FilteredElementCollector collector = new FilteredElementCollector(doc);
-                        List<Element> allElementsOnLevel = collector
-                            
-                            .WherePasses(level1Filter).Cast<Element>().ToList();
+                        List<ElementId> allElementsOnLevel = collector
+                            .WherePasses(levelFilter)
+                            .Where(element => !element.IsHidden(doc.ActiveView))
+                            .Cast<Element>()
+                            .Select(element => element.Id)
+                            .ToList();
+
+                        
 
                         // Создайте список для элементов, которые нужно скрыть
                         List<ElementId> elementsToHide = new List<ElementId>();
+                        StringBuilder buil = new StringBuilder();
+                        //foreach (Element element in allElementsOnLevel)
+                        //{
+                        //    // Добавьте все элементы, кроме ImportInstance, в список элементов для скрытия
+                        //    if (element.Id != curElem.Value.Id)
+                        //    {
+                        //        elementsToHide.Add(element.Id);
+                        //        buil.AppendLine(element.Id.ToString());
 
-                        foreach (Element element in allElementsOnLevel)
-                        {
-                            // Добавьте все элементы, кроме ImportInstance, в список элементов для скрытия
-                            if (element.Id != curElem.Value.Id)
-                            {
-                                elementsToHide.Add(element.Id);
-                            }
-                        }
+                        //    }
+                        //}
+
 
                         // Скройте все элементы на уровне, кроме ImportInstance
-                        doc.ActiveView.HideElements(elementsToHide);
+                        doc.ActiveView.HideElements(allElementsOnLevel);
 
+                        TaskDialog.Show("Look at me", "<3");
+
+
+                        doc.ActiveView.UnhideElements(new List<ElementId> { curElem.Value.Id });
+                        allElementsOnLevel.Remove(curElem.Value.Id);
+
+                        TaskDialog.Show("Look at me", "<3");
+
+                        
                         // Экспортируем DWG из ImportInstance в указанный путь с заданными параметрами
                         doc.Export(fullFolderPath, curElem.Value.Category.Name, elementsToExport, options);
 
-                        doc.ActiveView.UnhideElements(elementsToHide);
+                        
 
-                        //doc.ActiveView.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
+                        //doc.ActiveView.UnhideElements(allElementsOnLevel);
+
+                        
 
                         // Фиксируем транзакцию, сохраняя изменения
                         trans.Commit();
 
                         savedElemsCount++; // Увеличиваем счетчик успешно сохраненных DWG
+
                     }
                     catch (Exception ex)
                     {
@@ -182,11 +173,13 @@ namespace RevitApi1
                         trans.RollBack();
                         TaskDialog.Show("Ошибка выгрузки файла", ex.Message + " " + ex.StackTrace + " " + ex.GetType());
                     }
+
                 }
                 catch (Exception ex)
                 {
                     TaskDialog.Show("Ошибка создания папки", ex.Message);
                 }
+
             }
             return savedElemsCount;
         }
